@@ -9,18 +9,19 @@ textsess = PromptSession()
 
 
 class actnlist(object):
-    def __init__(self, username, chatroom, servaddr):
+    def __init__(self, wbsocket, username, chatroom, servaddr):
         self.username = username
         self.chatroom = chatroom
         self.servaddr = servaddr
+        self.wbsocket = wbsocket
 
-    def chekcomd(self, mesgdict):
+    async def chekcomd(self, mesgdict):
         actiword = mesgdict["mesgtext"].split(" ")[0]
         if actiword == "/kick":
             if mesgdict["username"] == self.username:
-                return self.recvkick(mesgdict)
+                return await self.sendkick(mesgdict)
             else:
-                return self.sendkick(mesgdict)
+                return self.recvkick(mesgdict)
         elif actiword == "/stop":
             if mesgdict["username"] == self.username:
                 return self.recvstop(mesgdict)
@@ -32,13 +33,25 @@ class actnlist(object):
             else:
                 return self.sendpurr(mesgdict)
         elif actiword == "/exit":
-            return self.makeexit(mesgdict)
-        return False
+            if mesgdict["username"] == self.username:
+                return self.sendexit(mesgdict)
+            else:
+                return self.recvexit(mesgdict)
+        else:
+            return False
 
-    def sendkick(self, mesgdict):
+    async def sendkick(self, mesgdict):
+        await self.wbsocket.send(json.dumps(mesgdict))
         return True
 
     def recvkick(self, mesgdict):
+        mesgtext = mesgdict["mesgtext"]
+        if self.username == mesgtext.split(" ")[1]:
+            print("[" + obtntime() + "] " + formusnm(mesgdict["username"]) + " ⮞ You were removed from the chatroom by " + str(mesgdict["username"]))
+            #print_formatted_text(HTML("[" + obtntime() + "] " + "SNCTRYZERO ⮞ <yellow>Leaving SNCTRYZERO...</yellow>"))
+            sys.exit(0)
+        else:
+            print("[" + obtntime() + "] " + formusnm(mesgdict["username"]) + " ⮞ " + mesgtext.split(" ")[1] + " was removed from the chatroom by " + mesgdict["username"])
         return True
 
     def sendstop(self, mesgdict):
@@ -53,7 +66,10 @@ class actnlist(object):
     def recvpurr(self, mesgdict):
         return True
 
-    def makeexit(self, mesgdict):
+    def sendexit(self, mesgdict):
+        return True
+
+    def recvexit(self, mesgdict):
         return True
 
 
@@ -64,31 +80,34 @@ class emtyfind(Validator):
             raise ValidationError(message="You cannot send an empty message")
 
 
-async def consumer_handler(websocket, username, chatroom, servaddr):
+async def consumer_handler(actiobjc, websocket, username, chatroom, servaddr):
     async for recvdata in websocket:
         try:
             recvjson = json.loads(recvdata)
-            if recvjson["chatroom"] == chatroom:
-                if recvjson["username"] != username:
-                    print("[" + obtntime() + "] " + formusnm(recvjson["username"]) + " ⮞ " + recvjson["mesgtext"])
+            if not await actiobjc.chekcomd(mesgdict=recvjson):
+                if recvjson["chatroom"] == chatroom:
+                    if recvjson["username"] != username:
+                        print("[" + obtntime() + "] " + formusnm(recvjson["username"]) + " ⮞ " + recvjson["mesgtext"])
         except Exception as EXPT:
             pass
 
 
-async def producer_handler(websocket, username, chatroom, servaddr):
+async def producer_handler(actiobjc, websocket, username, chatroom, servaddr):
     footelem = HTML("<b><style bg='seagreen'>" + username.strip() + "</style></b>@<b><style bg='seagreen'>" + chatroom + "</style></b> [<b><style bg='seagreen'>Sanctuary ZERO v15082020</style></b> running on <b><style bg='seagreen'>" + servaddr + "</style></b>]")
     complete = WordCompleter(["/kick", "/stop", "/exit", "/purr"])
     while True:
         with patch_stdout():
             mesgtext = await textsess.prompt_async("[" + obtntime() + "] " + formusnm(str(username)) + " ⮞ ", bottom_toolbar=footelem, validator=emtyfind(), completer=complete)
-        senddata = json.dumps({"username": username.strip(), "chatroom": chatroom, "mesgtext": mesgtext.strip()})
-        await websocket.send(senddata)
+        sendjson = {"username": username.strip(), "chatroom": chatroom, "mesgtext": mesgtext.strip()}
+        if not await actiobjc.chekcomd(mesgdict=sendjson):
+            await websocket.send(json.dumps(sendjson))
 
 
 async def hello(servaddr, username, chatroom):
     async with websockets.connect(servaddr) as websocket:
-        prod = asyncio.get_event_loop().create_task(producer_handler(websocket, str(username), str(chatroom), str(servaddr)))
-        cons = asyncio.get_event_loop().create_task(consumer_handler(websocket, str(username), str(chatroom), str(servaddr)))
+        actiobjc = actnlist(websocket, str(username), str(chatroom), str(servaddr))
+        prod = asyncio.get_event_loop().create_task(producer_handler(actiobjc, websocket, str(username), str(chatroom), str(servaddr)))
+        cons = asyncio.get_event_loop().create_task(consumer_handler(actiobjc, websocket, str(username), str(chatroom), str(servaddr)))
         sendmesg = json.dumps({"username": "SNCTRYZERO", "chatroom": chatroom, "mesgtext": str(username) + " has joined the chatroom"})
         await websocket.send(sendmesg)
         await prod
