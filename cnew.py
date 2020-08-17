@@ -3,9 +3,58 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit import print_formatted_text, HTML
 from prompt_toolkit.validation import Validator, ValidationError
-
+from prompt_toolkit.completion import WordCompleter
 
 textsess = PromptSession()
+
+
+class actnlist(object):
+    def __init__(self, username, chatroom, servaddr):
+        self.username = username
+        self.chatroom = chatroom
+        self.servaddr = servaddr
+
+    def chekcomd(self, mesgdict):
+        actiword = mesgdict["mesgtext"].split(" ")[0]
+        if actiword == "/kick":
+            if mesgdict["username"] == self.username:
+                return self.recvkick(mesgdict)
+            else:
+                return self.sendkick(mesgdict)
+        elif actiword == "/stop":
+            if mesgdict["username"] == self.username:
+                return self.recvstop(mesgdict)
+            else:
+                return self.sendstop(mesgdict)
+        elif actiword == "/purr":
+            if mesgdict["username"] == self.username:
+                return self.recvpurr(mesgdict)
+            else:
+                return self.sendpurr(mesgdict)
+        elif actiword == "/exit":
+            return self.makeexit(mesgdict)
+        return False
+
+    def sendkick(self, mesgdict):
+        return True
+
+    def recvkick(self, mesgdict):
+        return True
+
+    def sendstop(self, mesgdict):
+        return True
+
+    def recvstop(self, mesgdict):
+        return True
+
+    def sendpurr(self, mesgdict):
+        return True
+
+    def recvpurr(self, mesgdict):
+        return True
+
+    def makeexit(self, mesgdict):
+        return True
 
 
 class emtyfind(Validator):
@@ -28,9 +77,10 @@ async def consumer_handler(websocket, username, chatroom, servaddr):
 
 async def producer_handler(websocket, username, chatroom, servaddr):
     footelem = HTML("<b><style bg='seagreen'>" + username.strip() + "</style></b>@<b><style bg='seagreen'>" + chatroom + "</style></b> [<b><style bg='seagreen'>Sanctuary ZERO v15082020</style></b> running on <b><style bg='seagreen'>" + servaddr + "</style></b>]")
+    complete = WordCompleter(["/kick", "/stop", "/exit", "/purr"])
     while True:
         with patch_stdout():
-            mesgtext = await textsess.prompt_async("[" + obtntime() + "] " + formusnm(str(username)) + " ⮞ ", bottom_toolbar=footelem, validator=emtyfind())
+            mesgtext = await textsess.prompt_async("[" + obtntime() + "] " + formusnm(str(username)) + " ⮞ ", bottom_toolbar=footelem, validator=emtyfind(), completer=complete)
         senddata = json.dumps({"username": username.strip(), "chatroom": chatroom, "mesgtext": mesgtext.strip()})
         await websocket.send(senddata)
 
